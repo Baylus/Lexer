@@ -13,7 +13,7 @@ CCX Lexer
 // #define DEBUG
 // #define DEBUG_G1	//for debugging group 1 ("...G1") functions.
 // #define DEBUG_LOOP	//for debugging lexeme-loop and functions within it 
-#define FREQUENCY
+// #define FREQUENCY
 
 
 /* Function Groups 
@@ -68,8 +68,8 @@ int keywordsDepth;
 Tnode * operatorstree = NULL;
 int operatorsDepth;
 
-FILE* outfile;
-FILE* infile;
+FILE* outfile = NULL;
+FILE* infile = NULL;
 
 char* ReadFile(FILE*);
 FILE* getOutput(char* input);
@@ -134,15 +134,15 @@ int main(int argc, char* argv[]) {
 	//check if arguement was provided
 	if (argc < 2) error("Invalid Arguement #.\tExpected 1 command line arguement (input filename)\n");
 	
-	outfile = getOutput(argv[1]);
-	if (!outfile) outfile = stdout;		//if outfile failed to open, assume stdout.
+	//outfile = getOutput(argv[1]);
+	//if (!outfile) outfile = stdout;		//if outfile failed to open, assume stdout.
 	prints("Starting keywords");
-	KeywordsG1();
+	//KeywordsG1();
 	prints("Printing keywords");
 	// PrintTree(keywordstree);
 	
 	prints("\nStarting operators");
-	OperatorsG1();
+	//OperatorsG1();
 	prints("Printing operators");
 	// PrintTree(operatorstree);
 	
@@ -151,7 +151,10 @@ int main(int argc, char* argv[]) {
 	
 	char* file = ReadFile(inputfile);
 	if (file == NULL)	error("File is empty. (?)");
-	
+	if (inputfile != NULL) { 
+	  fclose(inputfile);
+	  inputfile = NULL;
+	}
 	char c;
 	int i = 0;
 printsloop("Starting Lexeme Loop");
@@ -165,12 +168,12 @@ printsloop("Starting Lexeme Loop");
 			++i;
 		} else if (file[i] == '/' && file[i + 1] == '*') {	/* Check for comment */
 printsloop("PL: Comment");
-				char* comment = malloc(sizeof(char*));	//give address to array to pass to function.
-				i += commentCategory(&comment, &file[i]);
+//char* comment = malloc(sizeof(char*));	//give address to array to pass to function.
+				i += commentCategory(NULL, &file[i]);
 #ifdef DEBUG
 // printLexeme(comment, 0);
 #endif
-				free(comment);		//HEAVILY CONSIDER REMOVING THIS WHOLE MECHANISM OF USING THE COMMENT OUTSIDE OF THE FUNCTION IT IS CREATED IN..
+				//free(comment);		//HEAVILY CONSIDER REMOVING THIS WHOLE MECHANISM OF USING THE COMMENT OUTSIDE OF THE FUNCTION IT IS CREATED IN..
 				//CONSIDER THIS A RELIC OF POOR FORESIGHT.
 		} else if (identifyChar(c) == 0) {	//if c is a letter.
 printsloop("LP: Letter");
@@ -211,9 +214,9 @@ charliteral[3] = '\0';
 		} else if (identifyNumericLiteral(c) == 0) {	//if c is a decimal digit
 			//this lexeme should likely be a numeric literal.
 printsloop("LP: Numeric");
-			char* numericliteral = malloc(sizeof(char*));
-			i += numericCategory(&numericliteral, &file[i]);
-			free(numericliteral);
+//char* numericliteral = malloc(sizeof(char*));
+			i += numericCategory(NULL, &file[i]);
+			//free(numericliteral);
 		} else if (c == '"') {
 			//string
 printsloop("LP: String");
@@ -241,10 +244,12 @@ printsloop("LP: End");
 				}
 				printLexeme(lexemeUNK, 7);	//might have to change this declaration.
 				free(lexemeUNK);				
+				lexemeUNK = NULL;
 			}
 		}
 	}
-	
+	free(file);
+	file = NULL;
 	return 0;
 }	//END main()
 
@@ -261,27 +266,33 @@ prints("Starting commentCategory()");
 		perror("commentCategory():: Incorrectly called function.\tlexeme does not satisfy comment requirements");
 	}
 	
-	char* temptr = (*comment);	//make new char* to reference arg1.
+	
+	char* temptr = NULL;
+	if (comment != NULL) {
+	  temptr = (*comment);	//make new char* to reference arg1.
+	}
 	int i = 0;
-	int maxSize = 16;
-	temptr = malloc(sizeof(char) * maxSize);	
+	int maxSize = 32;
+	temptr = malloc(maxSize * sizeof(char));	
 	//i believe this should work since comment was initialized with a malloc call for a char*, 
 	//therefore it should simply be holding an address
 	/* Essentially, I initialize the address of the pointer outside of function, 
 		so that i can initialize size of array (dynamically) within this function */
 	
-	while(file[i] != '\0') {
+	while(1) {
 		temptr[i] = file[i++];	//1. assign variable, don't increment.
-		if (temptr[i - 1] == '/' && temptr[i - 2] == '*') {	//2. check end lexeme condition, post-increment crucial for retaining proper # of int's read.
+		//printf("%c %d\n", temptr[i - 1], i - 1);
+		if (file[i - 1] == '/' && file[i - 2] == '*') {	//2. check end lexeme condition, post-increment crucial for retaining proper # of int's read.
 /* temptr[i - 1] == last char read | temptr[i - 2] == second to last char read */
 			//lexeme finished.
 			//might have to check here whether or not i == maxSize. Behavior based on implementation when new_size == old_size for realloc function.
 #ifdef DEBUG
-printf("lexeme finished, new size == %d", i);
+		  printf("lexeme finished: %s, new size == %d",temptr,  i);
 #endif
-			temptr = realloc(temptr, sizeof(char) * i);
+		  //printf("lexeme finished: %s, new size == %d",temptr,  i);
+//temptr = realloc(temptr, sizeof(char) * i);
 				//ensure that realloc did not return NULL.
-			if (temptr == NULL) perror("Realloc failed memory allocation in func commentCategory.\n");
+//if (temptr == NULL) perror("Realloc failed memory allocation in func commentCategory.\n");
 			break;
 		} else if (i == maxSize) {	//or check whether maxSize has been reached.
 			/*
@@ -289,14 +300,31 @@ printf("lexeme finished, new size == %d", i);
 			then 'i' would be too small and would result in the following char "read" replacing the null terminating character at the end of the string.
 			*/
 			maxSize *= 2;
-			temptr = realloc(temptr, sizeof(char) * maxSize);
+			char* ptr = realloc(temptr, sizeof(char) * maxSize);
+			if (ptr != NULL) {
+			  temptr = ptr;
+			} else {
+			  free(temptr);
+			  temptr = NULL;
+			  return -1;
+			}
 		} else {
 			
 		}
 	}
-	temptr = realloc(temptr, sizeof(char) * i);
+	char* ptr = realloc(temptr, sizeof(char) * (i + 1));
+	if (ptr == NULL) {
+	  perror("Realloc failed mem alocation in commentCategory.");
+	  free(temptr);
+	  temptr = NULL;
+	  return -1;
+	} else {
+	  temptr = ptr;
+	}
 	temptr[i] = '\0';
 	printLexeme(temptr, 0);
+	free(temptr);
+	temptr = NULL;
 	return i;	//Return number of int's read.
 }	//END commentCategory().
 /*
@@ -327,8 +355,11 @@ int numericCategory(char** numeric, char* file) {
 	}
 	int i = 0;
 	int maxSize = 64;
-	char* tmptr = (*numeric);	//pointer to make accessing the variable (*numeric)	easier.
-	tmptr = malloc(sizeof(char) * maxSize);
+	char* tmptr;
+	if (numeric != NULL) {
+	  tmptr = (*numeric);	//pointer to make accessing the variable (*numeric)	easier.
+	}
+	tmptr = calloc(maxSize, sizeof(char));
 	while(file[i] != '\0' && identifyNumericLiteral(file[i]) != -1) {
 		tmptr[i] = file[i++];
 		if (i == maxSize) {
@@ -339,10 +370,16 @@ int numericCategory(char** numeric, char* file) {
 		}
 	}
 // printf("Debug numeric is:%s\n", tmptr);
-	tmptr = realloc(tmptr, sizeof(char) * i);
+	tmptr = realloc(tmptr, sizeof(char) * (i + 1));
+	if (tmptr == NULL) {
+	  perror("realloc failed in numericCategory.");
+	  return -1;
+	}
 	tmptr[i] = '\0';
 // tmptr[i] = 0;
 	printLexeme(tmptr, 6);
+	free(tmptr);
+	tmptr = NULL;
 	return i;
 }
 
@@ -376,7 +413,7 @@ Closes the input file after done.
 Returns a char* to the char string that holds the file's contents. 
 */
 char* ReadFile(FILE* infile) {
-	char c;
+	char c = '\0';
 	int i = 0;	//counter for size of current word.
 	int maxsize = 256;
 	char* temp = malloc(sizeof(char) * maxsize);
@@ -391,9 +428,9 @@ char* ReadFile(FILE* infile) {
 		temp[i++] = c;
 		// ++i;
 	}
-	temp = realloc(temp, sizeof(char) * i);
+	//temp = realloc(temp, sizeof(char) * (i + 1));
 	temp[i] = '\0';		/* NULL-terminate the file string */
-	fclose(infile);
+	//fclose(infile);
 	return temp;
 }	/* END ReadFile() */
 
@@ -456,6 +493,8 @@ printf("Debug: Input file name = %s\n", inputfile);
 	} else {
 		error("lexer.c:: getOutput() _ Really shouldnt ever happen.");
 	}
+free(filename);
+ filename = NULL;
 	return tempfileptr;
 }	//END getOutput()
 
@@ -558,7 +597,7 @@ if (strcmp((*s), "/") != 0) {
 	llnode *curr = (*head), *prev = curr, *temptr = malloc(sizeof(llnode));
 	temptr->data = malloc(sizeof(char*));
 	strcpy(temptr->data, (*s));
-	// temptr->data = (*s);
+	//temptr->data = *s;
 temptr->data[strcspn(temptr->data, "\n")] = 0;	//"chomp" the newline char from the array.
 // prints("Finding Spot");
 	
@@ -593,6 +632,7 @@ int i = 0;
 		temptr->data = NULL;
 		temptr->next = NULL;
 		free(temptr);
+		temptr = NULL;
 	}
 }	//END AddToString()
 
@@ -659,6 +699,7 @@ Elegant solution to "chomp" issue, using strcspn.
 prints("Keywords;");
 // prints(keywordCount);
 // printf("%d\n", keywordCount);
+free(line);
 	searchTreeBalanceG1(&keywordstree, keywordCount, keywords);
 	return keywordCount;	//###############NOT EVEN IMPORTANT TO RETURN CONSIDER REMOVING.
 }
@@ -696,7 +737,7 @@ prints("Operators;");
 // prints(keywordCount);
 // printf("%d\n", operatorCount);
 	searchTreeBalanceG1(&operatorstree, operatorCount, operators);
-	
+free(line);
 	return operatorCount;	//!!!!!!!!!!!!!NOT EVEN NECESSARY TO RETURN THIS VALUE!!!!!!!!!!!###############
 }
 
@@ -943,9 +984,17 @@ prints("placed all words");
 	free(words);
 }
 
-// #define ARRAY_CHECK
+#define ARRAY_CHECK
 
 /*
+Checks whether or not the word provided is a keyword or just an identifier.
+The precompiler directive "ARRAY_CHECK" is intended to circumvent the decision I
+made originally to implement the keywords using a Binary Search Tree (BST). 
+The solution i made to create the tree was not originally working,
+and as i had spent too much time already with the keywords/operators side of it,
+i just decided to go for a simpler approach. 
+Optimizations could be made by implementing the tree instead.
+
 Returns 1 if keyword is found in keywords tree,
 returns 0 if keyword not found.
 */
@@ -978,12 +1027,17 @@ printsG1("G1: Check Failed");
 		return 1;
 	}
 #else
+	char* keywords[] = {"accessor", "and", "array", "begin", "bool", "case", "character", "constant", "else", 
+			    "elsif", "end", "exit", "function", "if", "in", "integer", "interface", "is", "loop", "module",
+			    "mutator", "natural", "null", "of", "or", "others", "out", "positive", "procedure", "range", 
+			    "return", "struct", "subtype", "then", "type", "when", "while"};
 	int i;
 	int tmpnum = 1;
-	for (i = 0; keywords[i] != '\0'; ++i) {
-		tmpnum = strcmp(keywords[i], word);
+	int keywords_num = 37;
+	for (i = 0; i < keywords_num; ++i) {
+	  if ((tmpnum = strcmp(keywords[i], word)) == 0) break;
 	}
-	if (keywords[i] != '\0') {
+	if (i == keywords_num) {
 		//no word found.
 		return 0;
 	} else if (tmpnum == 0) {
@@ -1020,15 +1074,19 @@ printsG1("G1: Start LookupOperatorG1");
 		return 1;
 	}
 #else
+	char* operators[] = {".", "<", ">", "(", ")", "+", "-", "*", "/", "|",
+			     "&", ";", ",", ":", "[", "]", "=", ":=", "..", "<<",
+			     ">>", "<>", "<=", ">=", "**", "!=", "=>"};
+
 	int i;
-	int tmpnum = 1;
-	for (i = 0; keywords[i] != '\0'; ++i) {
-		tmpnum = strcmp(keywords[i], word);
+	int operatorsNum = 27;
+	for (i = 0; i < operatorsNum; ++i) {
+	  if (strcmp(operators[i], word) == 0) break;
 	}
-	if (keywords[i] != '\0') {
+	if (i == operatorsNum) {
 		//no word found.
 		return 0;
-	} else if (tmpnum == 0) {
+	} else {
 		//word found
 		return 1;
 	}
@@ -1088,7 +1146,8 @@ prints("Starting Frequency");
 		for (i = 0; i < 8; ++i) {
 			fscanf(tmpfp, "%li", &frequency[i]);	//"%li" means long int
 		}
-		fclose(tmpfp);		
+		fclose(tmpfp);
+		tmpfp = NULL;
 	}
 #endif
 }
@@ -1108,6 +1167,7 @@ void WriteFrequency() {
 			fprintf(tmpfp, "%li\t", &frequency[i]);	//"%li" means long int
 		}
 		fclose(tmpfp);
+		tmpfp = NULL;
 	}
 #endif	
 }
